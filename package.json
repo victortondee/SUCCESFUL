@@ -1,0 +1,9 @@
+{
+  "name": "shortform-composer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local web app to generate short-form 9:16 videos from Library assets.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

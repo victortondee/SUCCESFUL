@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Short-Form Composer</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel controls">
+        <h1>Short-Form Composer</h1>
+        <p class="lead">
+          Uses random media from <code>Library</code> and random audio from
+          <code>Music library</code> to create a 9:16 short video.
+        </p>
+
+        <div id="libraryStatus" class="library-status">Checking folders...</div>
+
+        <label for="titleInput">Title (each line is a new line)</label>
+        <textarea
+          id="titleInput"
+          rows="6"
+          placeholder="Every line here becomes a new line in the final post"
+        ></textarea>
+
+        <label for="subtitleInput">Smaller text (single line)</label>
+        <input
+          id="subtitleInput"
+          type="text"
+          maxlength="90"
+          placeholder="Optional smaller text line"
+        />
+
+        <label for="durationInput">Duration in seconds</label>
+        <input id="durationInput" type="number" min="2" max="120" step="0.5" value="7" />
+
+        <label for="darknessInput">Darkness (%)</label>
+        <input id="darknessInput" type="number" min="0" max="100" step="1" value="15" />
+
+        <div class="actions">
+          <button id="refreshPreviewBtn" type="button">Randomize Preview Background</button>
+          <button id="refreshMusicBtn" type="button">Randomize Preview Music</button>
+          <button id="renderBtn" type="button" class="primary">Render Video</button>
+        </div>
+
+        <p id="statusText" class="status"></p>
+      </section>
+
+      <section class="panel preview-panel">
+        <div class="phone-frame">
+          <div id="previewFrame" class="preview-frame">
+            <video id="previewVideo" muted playsinline preload="metadata"></video>
+            <img id="previewImage" alt="preview background" />
+            <div id="shadeLayer" class="shade-layer"></div>
+            <div id="textLayer" class="text-layer">
+              <div id="previewTitle" class="preview-title"></div>
+              <div id="previewSubtitle" class="preview-subtitle"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="meta">
+          <div><span class="meta-label">Preview Background:</span> <span id="previewBgName">-</span></div>
+          <div><span class="meta-label">Preview Music:</span> <span id="previewMusicName">-</span></div>
+          <div><span class="meta-label">Last Render Media:</span> <span id="lastMediaName">-</span></div>
+          <div><span class="meta-label">Last Render Music:</span> <span id="lastMusicName">-</span></div>
+        </div>
+
+        <audio id="previewAudio" class="preview-audio" controls preload="metadata"></audio>
+
+        <video id="resultVideo" class="result-video" controls playsinline></video>
+        <a id="downloadLink" class="download-link" href="#" download hidden>Download Rendered Video</a>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
