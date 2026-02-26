@@ -12,24 +12,41 @@ const previewFrame = document.getElementById("previewFrame");
 const previewVideo = document.getElementById("previewVideo");
 const previewImage = document.getElementById("previewImage");
 const shadeLayer = document.getElementById("shadeLayer");
+const creditLayer = document.getElementById("creditLayer");
+const creditHandle = document.getElementById("creditHandle");
 const textLayer = document.getElementById("textLayer");
 const previewTitle = document.getElementById("previewTitle");
 const previewSubtitle = document.getElementById("previewSubtitle");
-const previewBgName = document.getElementById("previewBgName");
-const previewMusicName = document.getElementById("previewMusicName");
 const previewAudio = document.getElementById("previewAudio");
-const lastMediaName = document.getElementById("lastMediaName");
-const lastMusicName = document.getElementById("lastMusicName");
 const resultVideo = document.getElementById("resultVideo");
 const downloadLink = document.getElementById("downloadLink");
 
 let currentPreviewMedia = null;
 let currentPreviewMusic = null;
 let previewLoopInterval = null;
-let animationTimeout = null;
+let titleRevealTimeout = null;
+let subtitleRevealTimeout = null;
+let creditRevealTimeout = null;
+let titleLineRevealTimeouts = [];
 let lastBlobUrl = null;
+let instagramIconPromise = null;
 const previewMeasureCanvas = document.createElement("canvas");
 const previewMeasureCtx = previewMeasureCanvas.getContext("2d");
+const CANVAS_RENDER_WIDTH = 1080;
+const CANVAS_RENDER_HEIGHT = 1920;
+const TEXT_WIDTH_RATIO = 0.8;
+const TITLE_MIN_FONT_SIZE = 18;
+const SUBTITLE_BASE_FONT_SIZE = 42;
+const SUBTITLE_MIN_FONT_SIZE = 12;
+const MAIN_TEXT_START_SECONDS = 1.0;
+const TITLE_LINE_DELAY_SECONDS = 0.3;
+const SUBTITLE_AFTER_LAST_MAIN_SECONDS = 0.3;
+const AUTHOR_AFTER_FIRST_LINE_SECONDS = 0.05;
+const REVEAL_DURATION_SECONDS = 0.8;
+const CREDIT_TOP_RATIO = 0.16;
+const CREDIT_TEXT_SIZE_PX = 35;
+const CREDIT_ICON_SIZE_PX = 40;
+const CREDIT_ICON_GAP_PX = 8;
 
 function setStatus(message, isError = false) {
   statusText.textContent = message || "";
@@ -37,12 +54,11 @@ function setStatus(message, isError = false) {
 }
 
 function splitTitleLines(value) {
-  const lines = String(value || "")
+  return String(value || "")
     .replace(/\r/g, "")
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  return lines.length ? lines : ["Your", "Title"];
 }
 
 function cleanTitleLines(value) {
@@ -86,11 +102,162 @@ function getFadeOutSeconds(durationSeconds) {
   return clamp(durationSeconds * 0.22, 0.6, 1.8);
 }
 
+function normalizeHandle(raw) {
+  const cleaned = String(raw || "")
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/[^A-Za-z0-9._]/g, "");
+  const edgeTrimmed = cleaned.replace(/^[._]+|[._]+$/g, "");
+  if (edgeTrimmed.length < 2 || edgeTrimmed.length > 30) {
+    return null;
+  }
+  return edgeTrimmed;
+}
+
+function extractArtistHandle(fileName) {
+  if (!fileName) {
+    return null;
+  }
+
+  const stem = fileName.replace(/\.[^.]+$/, "");
+  const directAt = stem.match(/@([A-Za-z0-9._]{2,30})/);
+  if (directAt) {
+    return normalizeHandle(directAt[1]);
+  }
+
+  const instaPath = stem.match(/instagram\.com\/([A-Za-z0-9._]{2,30})/i);
+  if (instaPath) {
+    return normalizeHandle(instaPath[1]);
+  }
+
+  const byMarker = stem.match(
+    /(?:^|[_\-\s])(by|ig|artist)[_\-\s]+([A-Za-z0-9._]{2,30})(?=$|[_\-\s])/i
+  );
+  if (byMarker) {
+    return normalizeHandle(byMarker[2]);
+  }
+
+  const stemCandidate = normalizeHandle(
+    stem
+      .replace(/^snapinsta\.to[_\-]*/i, "")
+      .replace(/^video[_\-]*/i, "")
+      .replace(/^clip[_\-]*/i, "")
+      .trim()
+  );
+  if (stemCandidate && /[A-Za-z]/.test(stemCandidate)) {
+    return stemCandidate;
+  }
+
+  return null;
+}
+
+function updatePreviewCredit(media) {
+  const handle = media?.type === "video" ? extractArtistHandle(media.fileName) : null;
+  if (!handle) {
+    creditHandle.textContent = "";
+    creditLayer.hidden = true;
+    return;
+  }
+  creditHandle.textContent = handle;
+  creditLayer.hidden = false;
+}
+
+function loadInstagramIcon() {
+  if (instagramIconPromise) {
+    return instagramIconPromise;
+  }
+  instagramIconPromise = new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = "/assets/instagram.svg";
+  });
+  return instagramIconPromise;
+}
+
+async function ensureRenderFontsReady() {
+  if (!document.fonts || typeof document.fonts.load !== "function") {
+    return;
+  }
+  await Promise.allSettled([
+    document.fonts.load('700 64px "Avenir Next"'),
+    document.fonts.load('300 48px "Poppins Light"')
+  ]);
+}
+
+function computeCreditLayoutForRender(canvasWidth, canvasHeight) {
+  const labelSize = CREDIT_TEXT_SIZE_PX;
+  const handleSize = CREDIT_TEXT_SIZE_PX;
+  const iconSize = CREDIT_ICON_SIZE_PX;
+  const gap = CREDIT_ICON_GAP_PX;
+  const topY = Math.round(canvasHeight * CREDIT_TOP_RATIO);
+
+  return {
+    labelSize,
+    handleSize,
+    iconSize,
+    gap,
+    topY
+  };
+}
+
+function applyPreviewCreditScale(frameWidth) {
+  const scale = frameWidth / CANVAS_RENDER_WIDTH;
+  const fontPx = Math.max(12, Math.round(CREDIT_TEXT_SIZE_PX * scale));
+  const iconPx = Math.max(12, Math.round(CREDIT_ICON_SIZE_PX * scale));
+  const gapPx = Math.max(3, Math.round(CREDIT_ICON_GAP_PX * scale));
+  creditLayer.style.setProperty("--credit-font-size", `${fontPx}px`);
+  creditLayer.style.setProperty("--credit-icon-size", `${iconPx}px`);
+  creditLayer.style.setProperty("--credit-icon-gap", `${gapPx}px`);
+}
+
+function computeRenderTextSizes(titleLines, subtitle) {
+  if (!previewMeasureCtx) {
+    return {
+      titleFontSize: TITLE_MIN_FONT_SIZE,
+      subtitleFontSize: subtitle ? SUBTITLE_MIN_FONT_SIZE : 0
+    };
+  }
+  const titleFontSize = computeTitleFont(
+    previewMeasureCtx,
+    titleLines,
+    CANVAS_RENDER_WIDTH,
+    CANVAS_RENDER_HEIGHT
+  );
+  const subtitleFontSize = computeSubtitleFont(previewMeasureCtx, subtitle, CANVAS_RENDER_WIDTH);
+  return {
+    titleFontSize,
+    subtitleFontSize
+  };
+}
+
+function computeAnimationTimeline(titleLineCount) {
+  const safeLineCount = Math.max(1, titleLineCount);
+  const mainStart = MAIN_TEXT_START_SECONDS;
+  const lastLineStart = mainStart + (safeLineCount - 1) * TITLE_LINE_DELAY_SECONDS;
+  const lastLineFullyVisible = lastLineStart + REVEAL_DURATION_SECONDS;
+  const subtitleStart = lastLineFullyVisible + SUBTITLE_AFTER_LAST_MAIN_SECONDS;
+  const firstLineCue = mainStart + TITLE_LINE_DELAY_SECONDS;
+  const authorStart = firstLineCue + AUTHOR_AFTER_FIRST_LINE_SECONDS;
+  return {
+    mainStart,
+    subtitleStart,
+    authorStart
+  };
+}
+
 function refreshPreviewText() {
   const titleLines = splitTitleLines(titleInput.value);
   const subtitle = normalizeSubtitle(subtitleInput.value);
 
-  previewTitle.textContent = titleLines.join("\n");
+  previewTitle.replaceChildren();
+  for (const line of titleLines) {
+    const lineElement = document.createElement("div");
+    lineElement.className = "preview-title-line";
+    lineElement.textContent = line;
+    previewTitle.appendChild(lineElement);
+  }
+  previewTitle.style.display = titleLines.length ? "inline-block" : "none";
   previewSubtitle.textContent = subtitle;
   previewSubtitle.style.display = subtitle ? "inline-block" : "none";
 
@@ -104,20 +271,55 @@ function fitPreviewText() {
     return;
   }
 
+  applyPreviewCreditScale(frameW);
+
   if (!previewMeasureCtx) {
     return;
   }
 
   const titleLines = splitTitleLines(titleInput.value);
   const subtitle = normalizeSubtitle(subtitleInput.value);
-  const titleSize = computeTitleFont(previewMeasureCtx, titleLines, frameW, frameH);
-
-  previewTitle.style.fontSize = `${titleSize}px`;
-  previewTitle.style.lineHeight = `${Math.round(titleSize * 1.16)}px`;
-
-  if (previewSubtitle.style.display !== "none" && subtitle) {
-    const subtitleSize = computeSubtitleFont(previewMeasureCtx, subtitle, frameW, titleSize);
+  const scale = frameW / CANVAS_RENDER_WIDTH;
+  let titleSize = Math.max(12, Math.round(TITLE_MIN_FONT_SIZE * scale));
+  if (titleLines.length) {
+    const renderSizes = computeRenderTextSizes(titleLines, subtitle);
+    titleSize = Math.max(12, Math.round(renderSizes.titleFontSize * scale));
+    previewTitle.style.fontSize = `${titleSize}px`;
+    previewTitle.style.lineHeight = `${Math.round(titleSize * 1.16)}px`;
+    if (previewSubtitle.style.display !== "none" && subtitle) {
+      const subtitleSize = Math.max(
+        10,
+        Math.round(renderSizes.subtitleFontSize * scale)
+      );
+      previewSubtitle.style.fontSize = `${subtitleSize}px`;
+    }
+  } else if (previewSubtitle.style.display !== "none" && subtitle) {
+    const subtitleSize = Math.max(
+      10,
+      Math.round(SUBTITLE_MIN_FONT_SIZE * scale)
+    );
     previewSubtitle.style.fontSize = `${subtitleSize}px`;
+  }
+}
+
+function clearRevealTimeouts() {
+  if (titleRevealTimeout) {
+    window.clearTimeout(titleRevealTimeout);
+    titleRevealTimeout = null;
+  }
+  if (subtitleRevealTimeout) {
+    window.clearTimeout(subtitleRevealTimeout);
+    subtitleRevealTimeout = null;
+  }
+  if (creditRevealTimeout) {
+    window.clearTimeout(creditRevealTimeout);
+    creditRevealTimeout = null;
+  }
+  if (titleLineRevealTimeouts.length) {
+    for (const timeoutId of titleLineRevealTimeouts) {
+      window.clearTimeout(timeoutId);
+    }
+    titleLineRevealTimeouts = [];
   }
 }
 
@@ -126,38 +328,73 @@ function stopPreviewLoop() {
     window.clearInterval(previewLoopInterval);
     previewLoopInterval = null;
   }
-  if (animationTimeout) {
-    window.clearTimeout(animationTimeout);
-    animationTimeout = null;
-  }
+  clearRevealTimeouts();
   previewAudio.pause();
 }
 
 function runIntroAnimation() {
-  if (animationTimeout) {
-    window.clearTimeout(animationTimeout);
-    animationTimeout = null;
-  }
+  clearRevealTimeouts();
 
   shadeLayer.style.transition = "none";
-  textLayer.style.transition = "none";
   shadeLayer.style.opacity = "0";
-  textLayer.style.opacity = "0";
-  textLayer.style.transform = "translateY(18px)";
+  textLayer.style.opacity = "1";
+  textLayer.style.transform = "none";
+
+  const titleLineElements = Array.from(previewTitle.querySelectorAll(".preview-title-line"));
+  for (const lineElement of titleLineElements) {
+    lineElement.style.transition = "none";
+    lineElement.style.opacity = "0";
+    lineElement.style.transform = "translateY(18px)";
+  }
+
+  previewSubtitle.style.transition = "none";
+  previewSubtitle.style.opacity = "0";
+  previewSubtitle.style.transform = "translateY(16px)";
+
+  creditLayer.style.transition = "none";
+  creditLayer.style.opacity = "0";
+  creditLayer.style.transform = "translate(-50%, 10px)";
 
   // Force style flush so transitions restart every cycle.
   void shadeLayer.offsetHeight;
 
   const duration = getDurationSeconds();
-  const fadeMs = Math.max(500, Math.min(900, Math.round(duration * 100)));
+  const timeline = computeAnimationTimeline(titleLineElements.length);
+  const fadeMs = Math.max(
+    500,
+    Math.min(900, Math.round(Math.min(duration, REVEAL_DURATION_SECONDS * 1.25) * 1000))
+  );
   shadeLayer.style.transition = `opacity ${fadeMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
-  textLayer.style.transition = `opacity ${fadeMs}ms cubic-bezier(0.22, 1, 0.36, 1), transform ${fadeMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+  for (const lineElement of titleLineElements) {
+    lineElement.style.transition = `opacity ${fadeMs}ms cubic-bezier(0.22, 1, 0.36, 1), transform ${fadeMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+  }
+  previewSubtitle.style.transition = `opacity ${fadeMs}ms cubic-bezier(0.22, 1, 0.36, 1), transform ${fadeMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+  creditLayer.style.transition = `opacity ${fadeMs}ms cubic-bezier(0.22, 1, 0.36, 1), transform ${fadeMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
 
-  animationTimeout = window.setTimeout(() => {
+  titleRevealTimeout = window.setTimeout(() => {
     shadeLayer.style.opacity = `${getDarknessOpacity()}`;
-    textLayer.style.opacity = "1";
-    textLayer.style.transform = "translateY(0px)";
-  }, 1000);
+  }, Math.round(timeline.mainStart * 1000));
+
+  titleLineRevealTimeouts = titleLineElements.map((lineElement, index) =>
+    window.setTimeout(() => {
+      lineElement.style.opacity = "1";
+      lineElement.style.transform = "translateY(0px)";
+    }, Math.round((timeline.mainStart + index * TITLE_LINE_DELAY_SECONDS) * 1000))
+  );
+
+  subtitleRevealTimeout = window.setTimeout(() => {
+    if (previewSubtitle.style.display !== "none") {
+      previewSubtitle.style.opacity = "1";
+      previewSubtitle.style.transform = "translateY(0px)";
+    }
+  }, Math.round(timeline.subtitleStart * 1000));
+
+  creditRevealTimeout = window.setTimeout(() => {
+    if (!creditLayer.hidden) {
+      creditLayer.style.opacity = "1";
+      creditLayer.style.transform = "translate(-50%, 0px)";
+    }
+  }, Math.round(timeline.authorStart * 1000));
 }
 
 function restartPreviewCycle() {
@@ -201,8 +438,7 @@ async function pickRandomPreviewMedia() {
   setStatus("Loading random background...");
   try {
     currentPreviewMedia = await fetchJson("/api/media/random");
-    previewBgName.textContent = currentPreviewMedia.fileName;
-
+    updatePreviewCredit(currentPreviewMedia);
     if (currentPreviewMedia.type === "video") {
       previewImage.style.display = "none";
       previewVideo.style.display = "block";
@@ -222,6 +458,7 @@ async function pickRandomPreviewMedia() {
     setStatus("");
   } catch (error) {
     currentPreviewMedia = null;
+    updatePreviewCredit(null);
     setStatus(error.message, true);
   }
 }
@@ -230,7 +467,6 @@ async function pickRandomPreviewMusic() {
   setStatus("Loading random preview music...");
   try {
     currentPreviewMusic = await fetchJson("/api/music/random");
-    previewMusicName.textContent = currentPreviewMusic.fileName;
     previewAudio.src = `${currentPreviewMusic.url}?ts=${Date.now()}`;
     previewAudio.volume = 0.95;
     previewAudio.load();
@@ -241,7 +477,6 @@ async function pickRandomPreviewMusic() {
     setStatus("");
   } catch (error) {
     currentPreviewMusic = null;
-    previewMusicName.textContent = "-";
     previewAudio.removeAttribute("src");
     previewAudio.load();
     setStatus(error.message, true);
@@ -275,10 +510,10 @@ function drawCover(ctx, source, targetWidth, targetHeight) {
 }
 
 function computeTitleFont(ctx, lines, width, height) {
-  const maxWidth = width * 0.84;
+  const maxWidth = width * TEXT_WIDTH_RATIO;
   const maxHeight = height * 0.44;
 
-  for (let size = 220; size >= 42; size -= 2) {
+  for (let size = 220; size >= TITLE_MIN_FONT_SIZE; size -= 2) {
     ctx.font = `700 ${size}px \"Avenir Next\", \"Helvetica Neue\", sans-serif`;
     const widest = Math.max(...lines.map((line) => ctx.measureText(line).width));
     const lineHeight = size * 1.16;
@@ -288,21 +523,21 @@ function computeTitleFont(ctx, lines, width, height) {
     }
   }
 
-  return 42;
+  return TITLE_MIN_FONT_SIZE;
 }
 
-function computeSubtitleFont(ctx, subtitle, width, titleFontSize) {
+function computeSubtitleFont(ctx, subtitle, width) {
   if (!subtitle) {
     return 0;
   }
-  const maxWidth = width * 0.84;
-  for (let size = Math.min(96, Math.round(titleFontSize * 0.58)); size >= 20; size -= 1) {
+  const maxWidth = width * TEXT_WIDTH_RATIO;
+  for (let size = SUBTITLE_BASE_FONT_SIZE; size >= SUBTITLE_MIN_FONT_SIZE; size -= 1) {
     ctx.font = `300 ${size}px \"Poppins Light\", \"Poppins\", \"Avenir Next\", sans-serif`;
     if (ctx.measureText(subtitle).width <= maxWidth) {
       return size;
     }
   }
-  return 20;
+  return SUBTITLE_MIN_FONT_SIZE;
 }
 
 function drawCompositionFrame(ctx, source, payload, elapsedSeconds) {
@@ -311,26 +546,29 @@ function drawCompositionFrame(ctx, source, payload, elapsedSeconds) {
     height,
     durationSeconds,
     darknessOpacity,
+    creditHandleText,
+    creditIconImage,
+    creditLayout,
     titleLines,
     subtitle,
     titleFontSize,
     subtitleFontSize
   } = payload;
   const t = Math.min(elapsedSeconds, durationSeconds);
+  const timeline = computeAnimationTimeline(titleLines.length);
 
   drawCover(ctx, source, width, height);
 
-  if (t < 1) {
+  if (t < timeline.mainStart) {
     return;
   }
 
-  const darkProgress = clamp((t - 1) / 0.8, 0, 1);
+  const darkProgress = clamp((t - timeline.mainStart) / REVEAL_DURATION_SECONDS, 0, 1);
   ctx.save();
   ctx.fillStyle = `rgba(0, 0, 0, ${darknessOpacity * darkProgress})`;
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
 
-  const titleProgress = darkProgress;
   const lineHeight = Math.round(titleFontSize * 1.16);
   const titleBlockHeight = lineHeight * titleLines.length;
   const subtitleLineHeight = Math.round(subtitleFontSize * 1.2);
@@ -338,12 +576,10 @@ function drawCompositionFrame(ctx, source, payload, elapsedSeconds) {
   const contentHeight = titleBlockHeight + (subtitle ? subtitleGap + subtitleLineHeight : 0);
   const contentTop = (height - contentHeight) / 2;
 
-  if (titleProgress > 0) {
-    const yOffset = (1 - titleProgress) * 34;
-    let y = contentTop + yOffset;
+  if (titleLines.length) {
+    let y = contentTop;
 
     ctx.save();
-    ctx.globalAlpha = titleProgress;
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
@@ -351,15 +587,26 @@ function drawCompositionFrame(ctx, source, payload, elapsedSeconds) {
     ctx.shadowColor = "rgba(0, 0, 0, 0.58)";
     ctx.shadowBlur = Math.max(8, titleFontSize * 0.22);
 
-    for (const line of titleLines) {
-      ctx.fillText(line, width / 2, y);
+    for (let index = 0; index < titleLines.length; index += 1) {
+      const line = titleLines[index];
+      const lineStart = timeline.mainStart + index * TITLE_LINE_DELAY_SECONDS;
+      const lineProgress = clamp((t - lineStart) / REVEAL_DURATION_SECONDS, 0, 1);
+      if (lineProgress > 0) {
+        const yOffset = (1 - lineProgress) * 34;
+        ctx.globalAlpha = lineProgress;
+        ctx.fillText(line, width / 2, y + yOffset);
+      }
       y += lineHeight;
     }
     ctx.restore();
   }
 
   if (subtitle) {
-    const subtitleProgress = clamp((t - 1.2) / 0.8, 0, 1);
+    const subtitleProgress = clamp(
+      (t - timeline.subtitleStart) / REVEAL_DURATION_SECONDS,
+      0,
+      1
+    );
     if (subtitleProgress > 0) {
       const yOffset = (1 - subtitleProgress) * 24;
       const subtitleY = contentTop + titleBlockHeight + subtitleGap + yOffset;
@@ -374,6 +621,48 @@ function drawCompositionFrame(ctx, source, payload, elapsedSeconds) {
       ctx.fillText(subtitle, width / 2, subtitleY);
       ctx.restore();
     }
+  }
+
+  if (creditHandleText) {
+    const creditProgress = clamp(
+      (t - timeline.authorStart) / REVEAL_DURATION_SECONDS,
+      0,
+      1
+    );
+    if (creditProgress <= 0) {
+      return;
+    }
+
+    const labelSize = creditLayout?.labelSize || CREDIT_TEXT_SIZE_PX;
+    const handleSize = creditLayout?.handleSize || CREDIT_TEXT_SIZE_PX;
+    const iconSize = creditLayout?.iconSize || CREDIT_ICON_SIZE_PX;
+    const gap = creditLayout?.gap || CREDIT_ICON_GAP_PX;
+    const labelLineHeight = Math.round(labelSize * 1.18);
+    const creditBaseY = creditLayout?.topY || Math.round(height * CREDIT_TOP_RATIO);
+    const creditYOffset = (1 - creditProgress) * 16;
+
+    ctx.save();
+    ctx.globalAlpha = 0.88 * creditProgress;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+    ctx.shadowBlur = Math.max(4, handleSize * 0.48);
+    ctx.font = `500 ${labelSize}px \"Avenir Next\", \"Helvetica Neue\", sans-serif`;
+    ctx.fillText("background art:", width / 2, creditBaseY + creditYOffset);
+
+    ctx.font = `500 ${handleSize}px \"Avenir Next\", \"Helvetica Neue\", sans-serif`;
+    ctx.textAlign = "left";
+    const handleWidth = ctx.measureText(creditHandleText).width;
+    const rowWidth = iconSize + gap + handleWidth;
+    const rowStartX = Math.round(width / 2 - rowWidth / 2);
+    const rowY = Math.round(creditBaseY + labelLineHeight + creditYOffset);
+
+    if (creditIconImage) {
+      ctx.drawImage(creditIconImage, rowStartX, rowY + Math.max(0, Math.round((handleSize - iconSize) / 2)), iconSize, iconSize);
+    }
+    ctx.fillText(creditHandleText, rowStartX + iconSize + gap, rowY);
+    ctx.restore();
   }
 }
 
@@ -454,15 +743,20 @@ async function renderInBrowser({ media, music, titleLines, subtitle, durationSec
     throw new Error("Could not initialize canvas renderer.");
   }
 
-  const [sourceMedia, musicAudio] = await Promise.all([
+  const [sourceMedia, musicAudio, creditIconImage] = await Promise.all([
     media.type === "video"
       ? loadVideo(`${media.url}?ts=${Date.now()}`)
       : loadImage(`${media.url}?ts=${Date.now()}`),
-    loadAudio(`${music.url}?ts=${Date.now()}`)
+    loadAudio(`${music.url}?ts=${Date.now()}`),
+    loadInstagramIcon()
   ]);
 
+  await ensureRenderFontsReady();
+
   const titleFontSize = computeTitleFont(ctx, titleLines, width, height);
-  const subtitleFontSize = computeSubtitleFont(ctx, subtitle, width, titleFontSize);
+  const subtitleFontSize = computeSubtitleFont(ctx, subtitle, width);
+  const creditHandleText = media.type === "video" ? extractArtistHandle(media.fileName) : null;
+  const creditLayout = computeCreditLayoutForRender(width, height);
 
   const mimeType = getSupportedRecorderMimeType();
   if (!mimeType) {
@@ -533,6 +827,9 @@ async function renderInBrowser({ media, music, titleLines, subtitle, durationSec
       height,
       durationSeconds,
       darknessOpacity,
+      creditHandleText,
+      creditIconImage,
+      creditLayout,
       titleLines,
       subtitle,
       titleFontSize,
@@ -581,6 +878,9 @@ async function renderInBrowser({ media, music, titleLines, subtitle, durationSec
         height,
         durationSeconds,
         darknessOpacity,
+        creditHandleText,
+        creditIconImage,
+        creditLayout,
         titleLines,
         subtitle,
         titleFontSize,
@@ -621,11 +921,19 @@ async function convertWebmBlobToMp4(blob, durationSeconds) {
     body: blob
   });
 
-  const body = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
     throw new Error(body.error || body.details || `Conversion failed (${response.status})`);
   }
-  return body;
+  const mp4Blob = await response.blob();
+  if (!mp4Blob.size) {
+    throw new Error("Conversion returned an empty MP4.");
+  }
+  const fileName = response.headers.get("x-output-filename") || `short_${Date.now()}.mp4`;
+  return {
+    blob: mp4Blob,
+    fileName
+  };
 }
 
 function revokeLastBlobUrl() {
@@ -633,6 +941,16 @@ function revokeLastBlobUrl() {
     URL.revokeObjectURL(lastBlobUrl);
     lastBlobUrl = null;
   }
+}
+
+function startBrowserDownload(fileUrl, fileName) {
+  const anchor = document.createElement("a");
+  anchor.href = fileUrl;
+  anchor.download = fileName;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
 
 async function renderVideo() {
@@ -667,9 +985,6 @@ async function renderVideo() {
       throw new Error("Could not load preview background/music. Try randomizing and render again.");
     }
 
-    lastMediaName.textContent = media.fileName;
-    lastMusicName.textContent = music.fileName;
-
     setStatus("Rendering with current preview background/music...");
     const webmBlob = await renderInBrowser({
       media,
@@ -682,15 +997,17 @@ async function renderVideo() {
 
     setStatus("Converting WebM to MP4...");
     const converted = await convertWebmBlobToMp4(webmBlob, durationSeconds);
-    const outputUrl = `${converted.output.url}?ts=${Date.now()}`;
+    const outputUrl = URL.createObjectURL(converted.blob);
+    lastBlobUrl = outputUrl;
 
     resultVideo.src = outputUrl;
     resultVideo.style.display = "block";
-    downloadLink.href = `${converted.output.url}?download=1`;
-    downloadLink.download = converted.output.fileName;
+    downloadLink.href = outputUrl;
+    downloadLink.download = converted.fileName;
     downloadLink.hidden = false;
+    startBrowserDownload(outputUrl, converted.fileName);
 
-    setStatus(`Rendered ${converted.output.fileName}.`);
+    setStatus(`Rendered ${converted.fileName}. Saved via browser download.`);
     await refreshFolderStatus();
   } catch (error) {
     setStatus(error.message, true);
@@ -717,9 +1034,14 @@ window.addEventListener("beforeunload", () => {
   revokeLastBlobUrl();
 });
 
-titleInput.value = "YOUR TITLE\nGOES HERE";
-subtitleInput.value = "Smaller one-line text";
+titleInput.value = "";
+subtitleInput.value = "";
 refreshPreviewText();
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => {
+    refreshPreviewText();
+  });
+}
 refreshFolderStatus();
 pickRandomPreviewMusic();
 pickRandomPreviewMedia();

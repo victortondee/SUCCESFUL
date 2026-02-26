@@ -27,7 +27,7 @@ Open: `http://localhost:3000`
   - supported: `.mp4 .mov .mkv .webm .avi .m4v .jpg .jpeg .png .webp .bmp`
 - Add music files to: `Music library/`
   - supported: `.mp3 .wav .m4a .aac .flac .ogg`
-- Rendered videos are saved to: `output/`
+- Rendered videos are downloaded by the browser to your default download location.
 
 ## Poppins Light font
 

@@ -197,6 +197,41 @@ button:disabled {
   pointer-events: none;
 }
 
+.credit-layer {
+  position: absolute;
+  left: 50%;
+  top: 16%;
+  transform: translateX(-50%);
+  text-align: center;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: var(--credit-font-size, 35px);
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.58);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.credit-label {
+  opacity: 0.9;
+}
+
+.credit-meta {
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--credit-icon-gap, 8px);
+}
+
+.ig-icon-img {
+  width: var(--credit-icon-size, 40px);
+  height: var(--credit-icon-size, 40px);
+  display: block;
+  opacity: 0.92;
+  flex: 0 0 auto;
+}
+
 .text-layer {
   position: absolute;
   inset: 0;
@@ -205,7 +240,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: clamp(10px, 2.2vw, 24px);
-  padding: 0 8%;
+  padding: 0 10%;
   opacity: 0;
   transform: translateY(18px);
   pointer-events: none;
@@ -215,11 +250,18 @@ button:disabled {
   color: #fff;
   text-align: center;
   font-weight: 700;
-  white-space: pre-line;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: normal;
   line-height: 1.16;
   text-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
   display: inline-block;
   max-width: 100%;
+}
+
+.preview-title-line {
+  display: block;
+  white-space: nowrap;
 }
 
 .preview-subtitle {

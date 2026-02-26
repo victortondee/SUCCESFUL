@@ -10,10 +10,6 @@
     <main class="layout">
       <section class="panel controls">
         <h1>Short-Form Composer</h1>
-        <p class="lead">
-          Uses random media from <code>Library</code> and random audio from
-          <code>Music library</code> to create a 9:16 short video.
-        </p>
 
         <div id="libraryStatus" class="library-status">Checking folders...</div>
 
@@ -53,18 +49,18 @@
             <video id="previewVideo" muted playsinline preload="metadata"></video>
             <img id="previewImage" alt="preview background" />
             <div id="shadeLayer" class="shade-layer"></div>
+            <div id="creditLayer" class="credit-layer" hidden>
+              <div class="credit-label">background art:</div>
+              <div class="credit-meta">
+                <img class="ig-icon-img" src="/assets/instagram.svg" alt="" aria-hidden="true" />
+                <span id="creditHandle"></span>
+              </div>
+            </div>
             <div id="textLayer" class="text-layer">
               <div id="previewTitle" class="preview-title"></div>
               <div id="previewSubtitle" class="preview-subtitle"></div>
             </div>
           </div>
-        </div>
-
-        <div class="meta">
-          <div><span class="meta-label">Preview Background:</span> <span id="previewBgName">-</span></div>
-          <div><span class="meta-label">Preview Music:</span> <span id="previewMusicName">-</span></div>
-          <div><span class="meta-label">Last Render Media:</span> <span id="lastMediaName">-</span></div>
-          <div><span class="meta-label">Last Render Music:</span> <span id="lastMusicName">-</span></div>
         </div>
 
         <audio id="previewAudio" class="preview-audio" controls preload="metadata"></audio>

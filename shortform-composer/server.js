@@ -11,7 +11,6 @@ const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const LIBRARY_DIR = path.join(ROOT, "Library");
 const MUSIC_DIR = path.join(ROOT, "Music library");
-const OUTPUT_DIR = path.join(ROOT, "output");
 const FONTS_DIR = path.join(ROOT, "fonts");
 
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"]);
@@ -23,6 +22,7 @@ const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -72,7 +72,6 @@ async function ensureFolders() {
   await Promise.all([
     fs.mkdir(LIBRARY_DIR, { recursive: true }),
     fs.mkdir(MUSIC_DIR, { recursive: true }),
-    fs.mkdir(OUTPUT_DIR, { recursive: true }),
     fs.mkdir(FONTS_DIR, { recursive: true })
   ]);
 }
@@ -217,8 +216,8 @@ function runProcess(command, args) {
 async function convertWebmToMp4(webmBuffer, durationSeconds) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shortform-webm-"));
   const inputPath = path.join(tempDir, "input.webm");
+  const outputPath = path.join(tempDir, "output.mp4");
   const outputName = `short_${Date.now()}.mp4`;
-  const outputPath = path.join(OUTPUT_DIR, outputName);
   await fs.writeFile(inputPath, webmBuffer);
 
   const ffmpegArgs = [
@@ -257,18 +256,17 @@ async function convertWebmToMp4(webmBuffer, durationSeconds) {
 
   try {
     await runProcess("ffmpeg", ffmpegArgs);
+    const mp4Buffer = await fs.readFile(outputPath);
+    return {
+      outputName,
+      mp4Buffer
+    };
   } catch (error) {
     throw new Error(`MP4 conversion failed: ${error.message}`);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
-
-   return {
-     outputName,
-     outputPath,
-     url: `/output/${encodeURIComponent(outputName)}`
-   };
- }
+}
 
  async function handleApiStatus(res) {
    const [mediaFiles, musicFiles] = await Promise.all([listMediaFiles(), listMusicFiles()]);
@@ -319,20 +317,21 @@ async function handleApiConvertWebm(req, res) {
 
   try {
     const result = await convertWebmToMp4(body, durationSeconds);
-     json(res, 200, {
-       success: true,
-       output: {
-         fileName: result.outputName,
-         url: result.url
-       }
-     });
-   } catch (error) {
-     json(res, 500, {
-       error: "MP4 conversion failed.",
-       details: error.message
-     });
-   }
- }
+    res.writeHead(200, {
+      "Content-Type": "video/mp4",
+      "Content-Length": result.mp4Buffer.length,
+      "Content-Disposition": `attachment; filename=\"${result.outputName}\"`,
+      "X-Output-Filename": result.outputName,
+      "Cache-Control": "no-store"
+    });
+    res.end(result.mp4Buffer);
+  } catch (error) {
+    json(res, 500, {
+      error: "MP4 conversion failed.",
+      details: error.message
+    });
+  }
+}
 
  async function handleRequest(req, res) {
    if (!req.url) {
@@ -388,19 +387,6 @@ async function handleApiConvertWebm(req, res) {
      const absolutePath = path.join(MUSIC_DIR, fileName);
      const contentType = MIME_TYPES[extnameLower(fileName)] || "application/octet-stream";
      await streamFile(req, res, absolutePath, contentType);
-     return;
-   }
-
-   if (method === "GET" && pathname.startsWith("/output/")) {
-     const fileName = safeBasenameRoute(pathname, "/output/");
-     if (!fileName) {
-       res.writeHead(400);
-       res.end("Invalid file");
-       return;
-     }
-     const absolutePath = path.join(OUTPUT_DIR, fileName);
-     const contentType = MIME_TYPES[extnameLower(fileName)] || "application/octet-stream";
-     await streamFile(req, res, absolutePath, contentType, requestUrl.searchParams.get("download") === "1");
      return;
    }
 
