@@ -4,6 +4,9 @@
   "private": true,
   "description": "Local web app to generate short-form 9:16 videos from Library assets.",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "up": "bash scripts/serverctl.sh start",
+    "down": "bash scripts/serverctl.sh stop",
+    "status": "bash scripts/serverctl.sh status"
   }
 }

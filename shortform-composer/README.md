@@ -15,11 +15,18 @@ Local browser app that:
 ## Run
 
 ```bash
-cd "/Users/yerevan/Downloads/untitled folder 84"
-npm start
+cd "/Users/yerevan/Desktop/DLT in/1 year/my software/feb 26/Title Reels with Video Backgrounds"
+npm run up
 ```
 
 Open: `http://localhost:3000`
+
+### Fast start commands
+
+- Start or reuse existing server: `npm run up`
+- Check if running: `npm run status`
+- Stop server: `npm run down`
+- Live foreground mode (manual): `npm start`
 
 ## Folders
 
