@@ -1055,22 +1055,27 @@ async function renderVideo() {
       darknessOpacity
     });
 
+    const isRenderHosted = window.location.hostname.endsWith("onrender.com");
     let outputBlob = webmBlob;
     let outputFileName = "short_" + Date.now() + ".webm";
 
-    try {
-      setStatus("Converting WebM to MP4...");
-      const converted = await convertWebmBlobToMp4(webmBlob, durationSeconds);
-      outputBlob = converted.blob;
-      outputFileName = converted.fileName;
-      setStatus(`Rendered ${converted.fileName}. Saved via browser download.`);
-    } catch (conversionError) {
-      outputBlob = webmBlob;
-      outputFileName = "short_" + Date.now() + ".webm";
-      setStatus(
-        `MP4 conversion failed (${conversionError.status || "server"}). Downloaded WebM instead.` ,
-        true
-      );
+    if (isRenderHosted) {
+      setStatus("Rendered WebM (fast mode for cloud deployment). Saved via browser download.");
+    } else {
+      try {
+        setStatus("Converting WebM to MP4...");
+        const converted = await convertWebmBlobToMp4(webmBlob, durationSeconds);
+        outputBlob = converted.blob;
+        outputFileName = converted.fileName;
+        setStatus(`Rendered ${converted.fileName}. Saved via browser download.`);
+      } catch (conversionError) {
+        outputBlob = webmBlob;
+        outputFileName = "short_" + Date.now() + ".webm";
+        setStatus(
+          `MP4 conversion failed (${conversionError.status || "server"}). Downloaded WebM instead.`,
+          true
+        );
+      }
     }
 
     const outputUrl = URL.createObjectURL(outputBlob);
