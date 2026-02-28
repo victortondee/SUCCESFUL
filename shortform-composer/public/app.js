@@ -981,7 +981,9 @@ async function convertWebmBlobToMp4(blob, durationSeconds) {
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || body.details || `Conversion failed (${response.status})`);
+    const err = new Error(body.error || body.details || `Conversion failed (${response.status})`);
+    err.status = response.status;
+    throw err;
   }
   const mp4Blob = await response.blob();
   if (!mp4Blob.size) {
@@ -1053,19 +1055,34 @@ async function renderVideo() {
       darknessOpacity
     });
 
-    setStatus("Converting WebM to MP4...");
-    const converted = await convertWebmBlobToMp4(webmBlob, durationSeconds);
-    const outputUrl = URL.createObjectURL(converted.blob);
+    let outputBlob = webmBlob;
+    let outputFileName = "short_" + Date.now() + ".webm";
+
+    try {
+      setStatus("Converting WebM to MP4...");
+      const converted = await convertWebmBlobToMp4(webmBlob, durationSeconds);
+      outputBlob = converted.blob;
+      outputFileName = converted.fileName;
+      setStatus(`Rendered ${converted.fileName}. Saved via browser download.`);
+    } catch (conversionError) {
+      outputBlob = webmBlob;
+      outputFileName = "short_" + Date.now() + ".webm";
+      setStatus(
+        `MP4 conversion failed (${conversionError.status || "server"}). Downloaded WebM instead.` ,
+        true
+      );
+    }
+
+    const outputUrl = URL.createObjectURL(outputBlob);
     lastBlobUrl = outputUrl;
 
     resultVideo.src = outputUrl;
     resultVideo.style.display = "block";
     downloadLink.href = outputUrl;
-    downloadLink.download = converted.fileName;
+    downloadLink.download = outputFileName;
     downloadLink.hidden = false;
-    startBrowserDownload(outputUrl, converted.fileName);
+    startBrowserDownload(outputUrl, outputFileName);
 
-    setStatus(`Rendered ${converted.fileName}. Saved via browser download.`);
     await refreshFolderStatus();
   } catch (error) {
     setStatus(error.message, true);

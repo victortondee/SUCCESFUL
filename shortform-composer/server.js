@@ -366,7 +366,7 @@ async function convertWebmToMp4(webmBuffer, durationSeconds) {
     "-c:v",
     "libx264",
     "-preset",
-    "medium",
+    "veryfast",
     "-pix_fmt",
     "yuv420p",
     "-r",
