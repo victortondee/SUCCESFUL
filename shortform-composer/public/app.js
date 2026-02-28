@@ -21,6 +21,10 @@ const previewAudio = document.getElementById("previewAudio");
 const resultVideo = document.getElementById("resultVideo");
 const downloadLink = document.getElementById("downloadLink");
 
+previewVideo.crossOrigin = "anonymous";
+previewImage.crossOrigin = "anonymous";
+previewAudio.crossOrigin = "anonymous";
+
 let currentPreviewMedia = null;
 let currentPreviewMusic = null;
 let previewLoopInterval = null;

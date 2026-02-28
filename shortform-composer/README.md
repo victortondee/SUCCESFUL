@@ -1,16 +1,14 @@
 # Short-Form Composer (9:16)
 
 Local browser app that:
-- picks a random image/video from `Library/`
-- picks a random track from `Music library/`
-- renders the animation in-browser to WebM
-- auto-converts to MP4 via local FFmpeg
-- final video is 9:16 (`1080x1920`) with:
-  - first second: only background media
-  - dark overlay fade in (customizable darkness %, default `15`)
-  - animated title reveal (multiline from textarea)
-  - optional smaller one-line subtitle (Poppins Light if available)
-- default duration: 7 seconds (editable in UI)
+- picks a random image/video background
+- picks a random music track
+- renders animation in-browser to WebM
+- converts to MP4 via FFmpeg
+
+It can source media from either:
+- local folders (`Library/` and `Music library/`) for local-only use
+- Cloudinary (recommended for online deployment)
 
 ## Run locally
 
@@ -21,35 +19,47 @@ npm run up
 
 Open: `http://127.0.0.1:3000/`
 
-### Fast start commands
+## Cloudinary setup (recommended)
 
-- Start or reuse existing server: `npm run up`
-- Check if running: `npm run status`
-- Stop server: `npm run down`
-- Live foreground mode (manual): `npm start`
+Create a `.env` file from `.env.example` and set:
+
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+- optional `CLOUDINARY_MEDIA_PREFIX` (default `shortform/library`)
+- optional `CLOUDINARY_MUSIC_PREFIX` (default `shortform/music`)
+
+When these vars are set, the app pulls random media/music from Cloudinary instead of local folders.
+
+## Upload local files to Cloudinary
+
+```bash
+npm run cloudinary:upload
+```
+
+This uploads:
+- `Library/*` (image/video) to `CLOUDINARY_MEDIA_PREFIX`
+- `Music library/*` (audio) to `CLOUDINARY_MUSIC_PREFIX`
 
 ## Deploy online (Render)
 
-Use a Render **Web Service** with Docker:
+Use a Render **Web Service**:
 - Repository: `victortondee/SUCCESFUL`
 - Root Directory: `shortform-composer`
 - Runtime: `Docker`
-- Instance: any always-on plan
 
-The included `Dockerfile` installs `ffmpeg`, and the server binds to `0.0.0.0` for cloud access.
+Set these Render environment variables:
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+- optionally `CLOUDINARY_MEDIA_PREFIX`
+- optionally `CLOUDINARY_MUSIC_PREFIX`
 
-## Folders
+The included Dockerfile already installs FFmpeg.
 
-- Add background media files to: `Library/`
-  - supported: `.mp4 .mov .mkv .webm .avi .m4v .jpg .jpeg .png .webp .bmp`
-- Add music files to: `Music library/`
-  - supported: `.mp3 .wav .m4a .aac .flac .ogg`
-- Rendered videos are downloaded by the browser to your default download location.
+## Fast local commands
 
-## Poppins Light font
-
-For exact Poppins Light in final renders, place:
-
-`Poppins-Light.ttf` in `fonts/Poppins-Light.ttf`
-
-If not found, the renderer falls back to system Helvetica.
+- Start/reuse server: `npm run up`
+- Check status: `npm run status`
+- Stop server: `npm run down`
+- Foreground mode: `npm start`

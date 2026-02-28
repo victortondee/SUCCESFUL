@@ -7,6 +7,7 @@
     "start": "node server.js",
     "up": "bash scripts/serverctl.sh start",
     "down": "bash scripts/serverctl.sh stop",
-    "status": "bash scripts/serverctl.sh status"
+    "status": "bash scripts/serverctl.sh status",
+    "cloudinary:upload": "bash scripts/upload_to_cloudinary.sh"
   }
 }

@@ -13,6 +13,12 @@ const LIBRARY_DIR = path.join(ROOT, "Library");
 const MUSIC_DIR = path.join(ROOT, "Music library");
 const FONTS_DIR = path.join(ROOT, "fonts");
 
+const CLOUDINARY_CLOUD_NAME = (process.env.CLOUDINARY_CLOUD_NAME || "").trim();
+const CLOUDINARY_API_KEY = (process.env.CLOUDINARY_API_KEY || "").trim();
+const CLOUDINARY_API_SECRET = (process.env.CLOUDINARY_API_SECRET || "").trim();
+const CLOUDINARY_MEDIA_PREFIX = (process.env.CLOUDINARY_MEDIA_PREFIX || "shortform/library").trim();
+const CLOUDINARY_MUSIC_PREFIX = (process.env.CLOUDINARY_MUSIC_PREFIX || "shortform/music").trim();
+
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"]);
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp"]);
 const MUSIC_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"]);
@@ -68,6 +74,14 @@ function isMusic(fileName) {
   return MUSIC_EXTENSIONS.has(extnameLower(fileName));
 }
 
+function normalizeCloudinaryPrefix(value) {
+  return String(value || "").replace(/^\/+|\/+$/g, "");
+}
+
+function isCloudinaryConfigured() {
+  return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
+}
+
 async function ensureFolders() {
   await Promise.all([
     fs.mkdir(LIBRARY_DIR, { recursive: true }),
@@ -83,7 +97,92 @@ async function listFiles(dirPath, matcher) {
     .map((entry) => entry.name);
 }
 
-async function listMediaFiles() {
+function cloudinaryAuthHeader() {
+  const token = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString("base64");
+  return `Basic ${token}`;
+}
+
+async function fetchCloudinaryResourcesPage(resourceType, prefix, nextCursor = null) {
+  const url = new URL(
+    `https://api.cloudinary.com/v1_1/${encodeURIComponent(CLOUDINARY_CLOUD_NAME)}/resources/${resourceType}/upload`
+  );
+  if (prefix) {
+    url.searchParams.set("prefix", prefix);
+  }
+  url.searchParams.set("max_results", "500");
+  if (nextCursor) {
+    url.searchParams.set("next_cursor", nextCursor);
+  }
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: cloudinaryAuthHeader()
+    }
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error?.message || `Cloudinary API failed (${response.status})`);
+  }
+
+  return {
+    resources: Array.isArray(payload.resources) ? payload.resources : [],
+    nextCursor: payload.next_cursor || null
+  };
+}
+
+async function listAllCloudinaryResources(resourceType, prefix) {
+  const resources = [];
+  let cursor = null;
+  do {
+    const page = await fetchCloudinaryResourcesPage(resourceType, prefix, cursor);
+    resources.push(...page.resources);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return resources;
+}
+
+function cloudinaryFileNameFromResource(resource) {
+  const base = path.basename(resource.public_id || "file");
+  const format = String(resource.format || "").toLowerCase();
+  if (format && !base.toLowerCase().endsWith(`.${format}`)) {
+    return `${base}.${format}`;
+  }
+  return base;
+}
+
+function cloudinaryExtension(resource) {
+  const fileName = cloudinaryFileNameFromResource(resource);
+  return extnameLower(fileName);
+}
+
+function mapCloudinaryMediaResource(resource) {
+  const ext = cloudinaryExtension(resource);
+  const type = IMAGE_EXTENSIONS.has(ext) ? "image" : VIDEO_EXTENSIONS.has(ext) ? "video" : null;
+  if (!type || !resource.secure_url) {
+    return null;
+  }
+
+  return {
+    fileName: cloudinaryFileNameFromResource(resource),
+    type,
+    url: resource.secure_url
+  };
+}
+
+function mapCloudinaryMusicResource(resource) {
+  const ext = cloudinaryExtension(resource);
+  if (!MUSIC_EXTENSIONS.has(ext) || !resource.secure_url) {
+    return null;
+  }
+
+  return {
+    fileName: cloudinaryFileNameFromResource(resource),
+    url: resource.secure_url
+  };
+}
+
+async function listLocalMediaFiles() {
   const names = await listFiles(LIBRARY_DIR, (name) => isVideo(name) || isImage(name));
   return names.map((name) => ({
     fileName: name,
@@ -93,7 +192,7 @@ async function listMediaFiles() {
   }));
 }
 
-async function listMusicFiles() {
+async function listLocalMusicFiles() {
   const names = await listFiles(MUSIC_DIR, (name) => isMusic(name));
   return names.map((name) => ({
     fileName: name,
@@ -101,6 +200,45 @@ async function listMusicFiles() {
     url: `/music-media/${encodeURIComponent(name)}`
   }));
 }
+
+async function listCloudinaryMediaFiles() {
+  const prefix = normalizeCloudinaryPrefix(CLOUDINARY_MEDIA_PREFIX);
+  const [imageResources, videoResources] = await Promise.all([
+    listAllCloudinaryResources("image", prefix),
+    listAllCloudinaryResources("video", prefix)
+  ]);
+
+  return [...imageResources, ...videoResources]
+    .map(mapCloudinaryMediaResource)
+    .filter(Boolean);
+}
+
+async function listCloudinaryMusicFiles() {
+  const prefix = normalizeCloudinaryPrefix(CLOUDINARY_MUSIC_PREFIX);
+  const [videoResources, rawResources] = await Promise.all([
+    listAllCloudinaryResources("video", prefix),
+    listAllCloudinaryResources("raw", prefix)
+  ]);
+
+  return [...videoResources, ...rawResources]
+    .map(mapCloudinaryMusicResource)
+    .filter(Boolean);
+}
+
+async function listMediaFiles() {
+  if (isCloudinaryConfigured()) {
+    return listCloudinaryMediaFiles();
+  }
+  return listLocalMediaFiles();
+}
+
+async function listMusicFiles() {
+  if (isCloudinaryConfigured()) {
+    return listCloudinaryMusicFiles();
+  }
+  return listLocalMusicFiles();
+}
+
 
 function json(res, statusCode, payload) {
   const body = JSON.stringify(payload);
@@ -434,11 +572,20 @@ async function handleApiConvertWebm(req, res) {
   server.listen(PORT, HOST, () => {
     // eslint-disable-next-line no-console
     console.log(`Short-form composer running at http://${HOST}:${PORT}`);
-     // eslint-disable-next-line no-console
-     console.log(`Library: ${LIBRARY_DIR}`);
-     // eslint-disable-next-line no-console
-     console.log(`Music library: ${MUSIC_DIR}`);
-   });
+    if (isCloudinaryConfigured()) {
+      // eslint-disable-next-line no-console
+      console.log(`Media source: Cloudinary (${CLOUDINARY_CLOUD_NAME})`);
+      // eslint-disable-next-line no-console
+      console.log(`Cloudinary media prefix: ${normalizeCloudinaryPrefix(CLOUDINARY_MEDIA_PREFIX)}`);
+      // eslint-disable-next-line no-console
+      console.log(`Cloudinary music prefix: ${normalizeCloudinaryPrefix(CLOUDINARY_MUSIC_PREFIX)}`);
+    } else {
+      // eslint-disable-next-line no-console
+      console.log(`Library: ${LIBRARY_DIR}`);
+      // eslint-disable-next-line no-console
+      console.log(`Music library: ${MUSIC_DIR}`);
+    }
+  });
  }
 
  if (require.main === module) {
