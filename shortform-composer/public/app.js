@@ -30,6 +30,8 @@ let creditRevealTimeout = null;
 let titleLineRevealTimeouts = [];
 let lastBlobUrl = null;
 let instagramIconPromise = null;
+let hasMedia = true;
+let hasMusic = true;
 const previewMeasureCanvas = document.createElement("canvas");
 const previewMeasureCtx = previewMeasureCanvas.getContext("2d");
 const CANVAS_RENDER_WIDTH = 1080;
@@ -51,6 +53,24 @@ const CREDIT_ICON_GAP_PX = 8;
 function setStatus(message, isError = false) {
   statusText.textContent = message || "";
   statusText.classList.toggle("error", Boolean(isError));
+}
+
+function setControlsEnabledState() {
+  const ready = hasMedia && hasMusic;
+  renderBtn.disabled = !ready;
+  refreshPreviewBtn.disabled = !hasMedia;
+  refreshMusicBtn.disabled = !hasMusic;
+}
+
+function showEmptyPreviewState() {
+  previewVideo.pause();
+  previewVideo.removeAttribute("src");
+  previewVideo.load();
+  previewVideo.style.display = "none";
+  previewImage.style.display = "block";
+  previewImage.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1080' height='1920'%3E%3Crect width='1080' height='1920' fill='%230f172a'/%3E%3Ctext x='540' y='920' text-anchor='middle' fill='white' font-size='58' font-family='Arial'%3ENo media uploaded%3C/text%3E%3Ctext x='540' y='990' text-anchor='middle' fill='%23cbd5e1' font-size='38' font-family='Arial'%3EAdd files then redeploy%3C/text%3E%3C/svg%3E";
+  updatePreviewCredit(null);
+  stopPreviewLoop();
 }
 
 function splitTitleLines(value) {
@@ -428,9 +448,24 @@ async function fetchJson(url, options) {
 async function refreshFolderStatus() {
   try {
     const status = await fetchJson("/api/status");
-    libraryStatus.textContent = `Library: ${status.mediaCount} media file(s), Music library: ${status.musicCount} track(s).`;
+    hasMedia = status.mediaCount > 0;
+    hasMusic = status.musicCount > 0;
+    if (hasMedia && hasMusic) {
+      libraryStatus.textContent = `Library: ${status.mediaCount} media file(s), Music library: ${status.musicCount} track(s).`;
+      libraryStatus.classList.remove("warning");
+    } else {
+      libraryStatus.textContent = "This online demo has no media yet. Add files to Library and Music library, then redeploy.";
+      libraryStatus.classList.add("warning");
+      showEmptyPreviewState();
+    }
   } catch (error) {
+    hasMedia = false;
+    hasMusic = false;
     libraryStatus.textContent = `Unable to check folders: ${error.message}`;
+    libraryStatus.classList.add("warning");
+    showEmptyPreviewState();
+  } finally {
+    setControlsEnabledState();
   }
 }
 
@@ -1042,6 +1077,11 @@ if (document.fonts && document.fonts.ready) {
     refreshPreviewText();
   });
 }
-refreshFolderStatus();
-pickRandomPreviewMusic();
-pickRandomPreviewMedia();
+refreshFolderStatus().then(() => {
+  if (hasMusic) {
+    pickRandomPreviewMusic();
+  }
+  if (hasMedia) {
+    pickRandomPreviewMedia();
+  }
+});
