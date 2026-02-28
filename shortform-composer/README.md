@@ -12,14 +12,14 @@ Local browser app that:
   - optional smaller one-line subtitle (Poppins Light if available)
 - default duration: 7 seconds (editable in UI)
 
-## Run
+## Run locally
 
 ```bash
-cd "/Users/yerevan/Desktop/DLT in/1 year/my software/feb 26/Title Reels with Video Backgrounds"
+cd "/Users/yerevan/Desktop/DLT in/1 year/my software/feb 26/Pushed to Github WITHOUT media/Title Reels with Video Backgrounds"
 npm run up
 ```
 
-Open: `http://localhost:3000`
+Open: `http://127.0.0.1:3000/`
 
 ### Fast start commands
 
@@ -27,6 +27,16 @@ Open: `http://localhost:3000`
 - Check if running: `npm run status`
 - Stop server: `npm run down`
 - Live foreground mode (manual): `npm start`
+
+## Deploy online (Render)
+
+Use a Render **Web Service** with Docker:
+- Repository: `victortondee/SUCCESFUL`
+- Root Directory: `shortform-composer`
+- Runtime: `Docker`
+- Instance: any always-on plan
+
+The included `Dockerfile` installs `ffmpeg`, and the server binds to `0.0.0.0` for cloud access.
 
 ## Folders
 

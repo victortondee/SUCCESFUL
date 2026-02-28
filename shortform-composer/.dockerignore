@@ -1,0 +1,6 @@
+.git
+.DS_Store
+.server.pid
+.server.log
+output
+node_modules

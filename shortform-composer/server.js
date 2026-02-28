@@ -6,7 +6,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 
 const PORT = Number(process.env.PORT || 3000);
-const HOST = process.env.HOST || "127.0.0.1";
+const HOST = process.env.HOST || "0.0.0.0";
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const LIBRARY_DIR = path.join(ROOT, "Library");
