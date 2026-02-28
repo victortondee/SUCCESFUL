@@ -712,6 +712,7 @@ function loadVideo(url) {
     video.muted = true;
     video.playsInline = true;
     video.loop = true;
+    video.crossOrigin = "anonymous";
     video.src = url;
 
     const onLoaded = () => {
@@ -738,6 +739,7 @@ function loadVideo(url) {
 function loadImage(url) {
   return new Promise((resolve, reject) => {
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("Failed to load background image."));
     image.src = url;
@@ -748,6 +750,7 @@ function loadAudio(url) {
   return new Promise((resolve, reject) => {
     const audio = document.createElement("audio");
     audio.preload = "auto";
+    audio.crossOrigin = "anonymous";
     audio.src = url;
 
     const onReady = () => {
@@ -843,11 +846,25 @@ async function renderInBrowser({ media, music, titleLines, subtitle, durationSec
       sourceMedia.pause();
     }
     musicAudio.pause();
+
+    // Force a final chunk before stopping for browsers that buffer until requested.
     try {
-      recorder.stop();
+      if (recorder.state === "recording") {
+        recorder.requestData();
+      }
     } catch {
       // no-op
     }
+
+    window.setTimeout(() => {
+      try {
+        if (recorder.state !== "inactive") {
+          recorder.stop();
+        }
+      } catch {
+        // no-op
+      }
+    }, 120);
   };
 
   const recorderDone = new Promise((resolve, reject) => {
@@ -944,7 +961,9 @@ async function renderInBrowser({ media, music, titleLines, subtitle, durationSec
   await audioContext.close();
 
   if (!chunks.length) {
-    throw new Error("Recording produced no output.");
+    throw new Error(
+      "Recording produced no output. Try Chrome desktop, and ensure media requests are not blocked by privacy extensions."
+    );
   }
 
   return new Blob(chunks, { type: mimeType });
